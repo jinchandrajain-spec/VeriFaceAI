@@ -1,4 +1,7 @@
 import os
+import time
+import numpy as np
+import matplotlib.cm as cm
 import streamlit as st
 import torch
 import torch.nn as nn
@@ -9,7 +12,7 @@ import torchvision.transforms as transforms
 # Page Configuration
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="AI Face Authenticity Verifier",
+    page_title="VeriFaceAI - Authenticity Engine",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -20,11 +23,21 @@ st.set_page_config(
 # ---------------------------------------------------------
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+
     /* Dark Theme Base */
     .stApp {
-        background-color: #0E1117;
+        background: linear-gradient(135deg, #050505, #0b0c16, #100b1a, #07131b);
+        background-size: 400% 400%;
+        animation: cyberpunkGradient 15s ease infinite;
         color: #E0E0E0;
         overflow-x: hidden;
+    }
+
+    @keyframes cyberpunkGradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
     }
 
     /* Ambient Cursor Glow Follower Effect */
@@ -56,22 +69,20 @@ st.markdown("""
         box-shadow: 0 12px 40px rgba(0, 229, 255, 0.12);
     }
 
-    /* Animated Upload Boundary Glow */
-    [data-testid="stFileUploader"] {
-        border: 2px dashed rgba(0, 229, 255, 0.25);
-        border-radius: 16px;
+    /* Input Controls Glassmorphism */
+    [data-testid="stFileUploader"], [data-testid="stCameraInput"] {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(0, 229, 255, 0.4);
+        border-radius: 12px;
         padding: 16px;
-        background: rgba(13, 17, 23, 0.6);
-        transition: all 0.4s ease;
-        animation: pulseSubtle 4s infinite ease-in-out;
+        box-shadow: 0 4px 20px rgba(0, 229, 255, 0.1);
+        transition: all 0.3s ease;
     }
-    [data-testid="stFileUploader"]:hover {
+    [data-testid="stFileUploader"]:hover, [data-testid="stCameraInput"]:hover {
         border-color: #00E5FF;
         box-shadow: 0 0 20px rgba(0, 229, 255, 0.45), inset 0 0 15px rgba(0, 229, 255, 0.2);
-    }
-    @keyframes pulseSubtle {
-        0%, 100% { border-color: rgba(0, 229, 255, 0.25); }
-        50% { border-color: rgba(157, 0, 255, 0.45); }
     }
 
     /* Image Preview Container with Illuminated Neon Border */
@@ -169,6 +180,86 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 25px rgba(157, 0, 255, 0.45);
         color: #FFFFFF;
+    }
+
+    /* Glassmorphism HUD Main Content Containers */
+    .stApp [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] {
+        background: rgba(15, 23, 42, 0.4);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 16px;
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        box-shadow: 0 4px 30px rgba(0, 229, 255, 0.1);
+        padding: 20px;
+    }
+
+    /* HUD Uploaded Image Styling */
+    [data-testid="stImage"] img {
+        border-radius: 12px;
+    }
+
+    /* Streamlit Alert Boxes HUD Override (Success/Error/Warning/Info) */
+    [data-testid="stAlert"], .st-emotion-cache-1wivap2 {
+        background: rgba(15, 23, 42, 0.4) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border-radius: 16px !important;
+        border: 1px solid rgba(0, 229, 255, 0.3) !important;
+        box-shadow: 0 4px 30px rgba(0, 229, 255, 0.1) !important;
+    }
+
+    /* Premium Toggle Buttons for Radio */
+    div[role="radiogroup"] label {
+        border: 1px solid #00E5FF;
+        padding: 10px 20px;
+        border-radius: 8px;
+        color: #E0E0E0;
+        background: rgba(0, 229, 255, 0.05);
+        transition: all 0.3s ease;
+        cursor: pointer;
+        margin-right: 10px;
+    }
+    div[role="radiogroup"] label:hover {
+        background: rgba(0, 229, 255, 0.15);
+        box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+        color: #FFFFFF;
+    }
+
+    /* Main Orbitron Header styling */
+    .stApp h1 {
+        font-family: 'Orbitron', sans-serif !important;
+        font-size: 5.5rem !important;
+        text-align: center !important;
+        width: 100% !important;
+        background: linear-gradient(90deg, #00E5FF, #9D00FF) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        padding-bottom: 0px !important;
+        margin-bottom: 0px !important;
+    }
+
+    [data-testid="stRadio"] div[role="radio"] p {
+        color: #FFFFFF !important; 
+        font-weight: 600 !important; 
+        font-size: 1.1rem !important;
+    }
+
+    /* Center align the tabs and add spacing */
+    div[data-baseweb="tab-list"] {
+        display: flex !important;
+        justify-content: center !important;
+        gap: 15px;
+        border-bottom: none !important;
+        width: 100% !important;
+    }
+
+    /* Force center alignment for horizontal radio groups */
+    [data-testid="stRadio"] > div[role="radiogroup"] {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+        margin: 0 auto !important;
     }
 </style>
 
@@ -278,24 +369,33 @@ with st.sidebar:
 # ---------------------------------------------------------
 # Header Section
 # ---------------------------------------------------------
-st.markdown("<h1 style='margin-bottom: 2px;'>AI-Based Authentic Face Verification System</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color: #8B949E; margin-bottom: 25px;'>Deep learning verification engine analyzing facial artifacts and demographic robustness.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='background: linear-gradient(90deg, #00E5FF, #9D00FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 700; margin-bottom: 2px;'>VeriFaceAI</h1>", unsafe_allow_html=True)
+st.markdown('<p style="text-align: center; font-size: 1.2rem; color: #A3B1C6; margin-top: -15px; margin-bottom: 40px;">Deep learning verification engine analyzing facial artifacts and demographic robustness.</p>', unsafe_allow_html=True)
 
-tab1, tab2 = st.tabs(["⚡ Live Verification", "📊 Demographic Fairness & Performance"])
+nav_left, nav_center, nav_right = st.columns([1.4, 2.5, 1])
+with nav_center:
+    app_mode = st.radio("Navigation", ["⚡ Live Verification", "📊 Demographic Fairness & Performance"], horizontal=True, label_visibility="collapsed")
 
 # ---------------------------------------------------------
 # Tab 1: Live Verification Engine
 # ---------------------------------------------------------
-with tab1:
+if app_mode == "⚡ Live Verification":
     col_left, col_right = st.columns([1, 1], gap="large")
 
     with col_left:
         st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
         st.subheader("1. Ingest Facial Image")
-        uploaded_file = st.file_uploader("Upload image for authenticity analysis", type=["jpg", "jpeg", "png"])
         
-        if uploaded_file is not None:
-            raw_image = Image.open(uploaded_file).convert("RGB")
+        input_method = st.radio("Select Input Method:", ["Upload Image", "Live Camera"], horizontal=True)
+        
+        image_input = None
+        if input_method == "Upload Image":
+            image_input = st.file_uploader("Upload image for authenticity analysis", type=["jpg", "jpeg", "png"])
+        else:
+            image_input = st.camera_input("Take a picture for verification")
+        
+        if image_input is not None:
+            raw_image = Image.open(image_input).convert("RGB")
             st.markdown(f"<p style='color: #8B949E; margin-top: 8px;'>Image Dimensions: <code>{raw_image.size[0]} x {raw_image.size[1]} px</code></p>", unsafe_allow_html=True)
             
             # Illuminated Animated Container Preview
@@ -308,33 +408,84 @@ with tab1:
         st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
         st.subheader("2. Authenticity Analysis")
         
-        if uploaded_file is None:
-            st.info("Upload a portrait image to begin inference.")
+        if image_input is None:
+            st.info("Upload or capture a portrait image to begin inference.")
         elif not is_model_loaded:
             st.error("Weights file 'best_model.pth' not found. Please verify training output.")
         else:
             if st.button("🚀 Verify Authenticity"):
-                with st.spinner("Analyzing micro-textures and synthetic boundaries..."):
-                    # Inference pipeline
-                    input_tensor = image_transform(raw_image).unsqueeze(0).to(active_device)
-                    with torch.no_grad():
-                        output_prob = model(input_tensor).item()
+                # --- Simulated Cyber-Scan Sequence ---
+                status_text = st.empty()
+                progress_bar = st.progress(0)
+                scan_messages = [
+                    "Initiating facial topography scan...",
+                    "Extracting micro-textures...",
+                    "Querying VeriFaceAI Deep Learning Engine...",
+                    "Decrypting sigmoid output..."
+                ]
+                for i in range(100):
+                    time.sleep(0.015)
+                    progress_bar.progress(i + 1)
+                    if i % 25 == 0:
+                        status_text.markdown(f"_{scan_messages[i // 25]}_")
+                status_text.empty()
+                progress_bar.empty()
+                # ---------------------------------------
 
-                    # Class Mapping: {'FAKE': 0, 'REAL': 1}
-                    is_real = output_prob >= 0.5
+                with st.spinner("Analyzing micro-textures and synthetic boundaries..."):
+                    # ---- Saliency Map (XAI) Pipeline ----
+                    input_tensor = image_transform(raw_image).unsqueeze(0).to(active_device)
+                    input_tensor.requires_grad_(True)
+
+                    # Forward pass WITH gradients for saliency
+                    output = model(input_tensor)
+                    output_prob = output.item()
+
+                    # Backward pass to compute input gradients
+                    model.zero_grad()
+                    output.backward()
+
+                    # Extract saliency map: max across colour channels → 2D
+                    saliency = input_tensor.grad.data.abs()
+                    saliency, _ = torch.max(saliency.squeeze(), dim=0)
+                    saliency_np = saliency.cpu().numpy()
+
+                    # Normalise to [0, 1]
+                    s_min, s_max = saliency_np.min(), saliency_np.max()
+                    if s_max > s_min:
+                        saliency_np = (saliency_np - s_min) / (s_max - s_min)
+                    else:
+                        saliency_np = np.zeros_like(saliency_np)
+
+                    # Apply thermal (inferno) colormap → RGB uint8
+                    heatmap_rgb = cm.inferno(saliency_np)[..., :3]  # drop alpha
+                    heatmap_rgb = (heatmap_rgb * 255).astype(np.uint8)
+                    heatmap_img = Image.fromarray(heatmap_rgb).resize(
+                        raw_image.size, Image.BILINEAR
+                    )
+
+                    # Blend original + heatmap at 50 % opacity
+                    forensic_image = Image.blend(
+                        raw_image.convert("RGB"), heatmap_img, alpha=0.50
+                    )
+                    # --------------------------------------
+
+                    # Class Mapping: {'FAKE': 0, 'REAL': 1} — Strict 0.65 security threshold
+                    THRESHOLD = 0.65
+                    is_real = output_prob >= THRESHOLD
                     confidence = output_prob if is_real else (1.0 - output_prob)
                     confidence_percent = confidence * 100.0
 
                     st.markdown("---")
                     if is_real:
                         st.markdown(
-                            f"<div class='status-badge status-real'>✓ Authentic (Real)</div>", 
+                            f"<div class='status-badge status-real'>✓ Authentic (Real)</div>",
                             unsafe_allow_html=True
                         )
                         st.markdown(f"**Certainty Score:** `{confidence_percent:.2f}%`")
                     else:
                         st.markdown(
-                            f"<div class='status-badge status-fake'>⚠ Manipulated (Fake)</div>", 
+                            f"<div class='status-badge status-fake'>⚠ Manipulated (Fake)</div>",
                             unsafe_allow_html=True
                         )
                         st.markdown(f"**Detection Confidence:** `{confidence_percent:.2f}%`")
@@ -345,15 +496,26 @@ with tab1:
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown(f"""
                     * **Raw Sigmoid Output:** `{output_prob:.5f}`
-                    * **Decision Threshold:** `0.50`
+                    * **Decision Threshold:** `0.65` *(Strict Security Mode)*
                     * **Assessment:** The network identified consistent facial edge alignment and micro-textures.
                     """)
+
+                    # ---- Forensic Artifact Scanner UI ----
+                    st.markdown("---")
+                    st.markdown("#### 🔬 Forensic Artifact Scanner")
+                    scan_col1, scan_col2 = st.columns(2)
+                    with scan_col1:
+                        st.image(raw_image, caption="Original Capture", use_container_width=True)
+                    with scan_col2:
+                        st.image(forensic_image, caption="Forensic Artifact Scan", use_container_width=True)
+                        st.caption("Mapping high-frequency artifact gradients")
+                    # -------------------------------------
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # Tab 2: Demographic Fairness & Audit
 # ---------------------------------------------------------
-with tab2:
+elif app_mode == "📊 Demographic Fairness & Performance":
     st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
     st.subheader("Test Evaluation Metrics")
     
